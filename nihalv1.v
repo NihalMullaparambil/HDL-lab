@@ -4,8 +4,7 @@ module Controller2 (
  input rst_n ,
  input [7:0] ADC,
  output reg [6:0] DC_Comp,
- output reg [3:0] LED_Drive ,
- output reg LED_IR , LED_RED , CLK_Filter ,
+ output reg LED_IR , LED_RED,
  output reg [3:0] PGA_Gain) ;
  reg [6:0] DC_RED, DC_IR; 
  reg [3:0] PGA_RED ,PGA_IR;
@@ -30,7 +29,8 @@ always@( posedge clk or negedge rst_n ) begin
 	 StateOfMachine <= find_DC_comp_IR;
 	 DC_Comp <= 64;
 	 DC_IR <= 0;
-	 errorDc <= 0;     
+	 errorDc <= 0;
+     halfError <= 0;     
  end
  else 
  begin
@@ -40,14 +40,21 @@ always@( posedge clk or negedge rst_n ) begin
 		StateOfMachine <= find_DC_comp_IR;
 		DC_Comp <= 64;
 		DC_IR <= 0;
-		errorDc <= 0;	
+		errorDc <= 0;
+        halfError <= 0;  	
 	end
 	find_DC_comp_IR : 
 	begin
 		if(ADC > 8'b01111111)
-		errorDc <= ADC - 8'b01111111 ;
-		else
-		errorDc <= 8'b01111111 - ADC;
+        begin
+            errorDc <= ADC - 8'b01111111 ;
+            halfError <= errorDc/2;
+        end
+        else
+        begin
+    	    errorDc <= 8'b01111111 - ADC;
+            halfError <= errorDc/2;
+        end
 		if((ADC == 8'b01111111)||errorDc < 8'b00000010)
 		begin
 			StateOfMachine <= find_PGA_comp_IR;
@@ -59,9 +66,12 @@ always@( posedge clk or negedge rst_n ) begin
 			DC_IR <= 0;
 			StateOfMachine <= find_DC_comp_IR;
 			if(ADC > 8'b01111111)
-				DC_Comp <=  DC_Comp + error/2;
+				DC_Comp <=  DC_Comp + halfError;
 			else
-				DC_Comp <=  DC_Comp - error/2;
+                if(halfError > DC_Comp)
+                	DC_Comp <=  halfError - DC_Comp;
+                else
+                    DC_Comp <=  DC_Comp - halfError;
 
 		end
 	end
