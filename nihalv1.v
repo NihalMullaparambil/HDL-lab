@@ -124,6 +124,75 @@ always@( posedge clk or negedge rst_n ) begin
 			measureOrControl <= !measureOrControl;
 		end
 	end
+    
+	find_PGA_comp_IR: 	
+	begin
+		if(signalCounter != 1000 && optimisePGA )
+		begin
+		if(measureOrControl)
+		begin
+			if(minVal <= lowerLimitVal || maxVal >= upperLimitVal)
+			begin
+				PGA_Gain <= past_PGA_Gain - 1;
+				PGA_IR <= past_PGA_Gain - 1;
+				
+				if(minVal <= lowerLimitVal)
+					minVal <= minVal + 1;
+				if(maxVal >= upperLimitVal)
+					maxVal <= maxVal - 1;								
+			end
+			measureOrControl <= !measureOrControl;
+			signalCounter <= signalCounter+1;					
+		end
+		else
+		begin
+			if(minVal > ADC)
+				minVal <= ADC ;
+			if(maxVal < ADC)
+				maxVal <= ADC;
+			
+			//if((PGA_Gain != 7))
+				 //PGA_Gain <= PGA_Gain + 1;
+			past_PGA_Gain <= PGA_Gain;
+			measureOrControl <= !measureOrControl;
+		end
+		end
+		else
+		begin
+			
+			optimisePGA <= 0;
+			signalCounter <= 0;
+			midleVal <= ((minVal+maxVal)>>1);
+			if(optimiseDC != 1)
+			begin
+				optimiseDC <= 1;
+				StateOfMachine <= find_DC_comp_IR_slow;
+				measureOrControl <= 1;
+				PGA_IR <= PGA_Gain;
+			end
+			else
+			begin
+				StateOfMachine <= find_DC_comp_RED_fast;
+				measureOrControl <= 0;
+				PGA_Gain <= 0;
+				DC_Comp <= 50; // for model sim we are using 50
+	 			errorDc <= 127;
+	 			measureOrControl <= 0;
+	 			LED_IR <= 0;
+         			LED_RED <= 1; 
+	 			repeatDclowest <= 0;
+	 			PastDC_Comp <= 56;
+	 			signalCounter <= 0;
+	 			minVal <= 250;
+	 			maxVal <= 5;
+	 			optimisePGA <= 0;
+	 			midleVal <= 0;
+	 			optimiseDC <= 0;
+				Flag = 1;
+						
+			end
+
+		end
 	endcase
 end	
 end
