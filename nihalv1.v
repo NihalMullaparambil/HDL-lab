@@ -158,41 +158,149 @@ always@( posedge clk or negedge rst_n ) begin
 		end
 		end
 		else
-		begin
-			
+		begin			
 			optimisePGA <= 0;
 			signalCounter <= 0;
-			midleVal <= ((minVal+maxVal)>>1);
-			if(optimiseDC != 1)
+			StateOfMachine <= find_DC_comp_RED_fast;
+            measureOrControl <= 0;
+            PGA_Gain <= 0;
+            DC_Comp <= 64; // for model sim we are using 50
+            errorDc <= 127;
+            measureOrControl <= 0;
+            LED_IR <= 0;
+            LED_RED <= 1; 
+            repeatDclowest <= 0;
+            PastDC_Comp <= 56;
+            signalCounter <= 0;
+            minVal <= 250;
+            maxVal <= 5;
+            optimisePGA <= 0;
+            midleVal <= 0;
+            optimiseDC <= 0;
+            lowestErrorDc <= 126;
+            lowDcComp <= 0;
+            higherDcComp <= 127;	
+		end
+    end
+    find_DC_comp_RED_fast :
+	begin
+		if(measureOrControl)
+		begin	//measure		
+			if(errorDc < lowestErrorDc || errorDc == lowestErrorDc)
+				if(repeatDclowest && errorDc == lowestErrorDc)
+				begin
+					StateOfMachine <= find_PGA_comp_RED;
+					DC_RED <= PastDC_Comp;
+					DC_Comp <= PastDC_Comp;
+					repeatDclowest <= 0;
+					signalCounter <= 0;
+					PGA_Gain <= 7;
+					optimisePGA <= 1;
+				end
+				else
+				begin
+					lowestErrorDc <= errorDc;
+					repeatDclowest <= 1;
+				end
+			if(ADC > 8'b01111111)
 			begin
-				optimiseDC <= 1;
-				StateOfMachine <= find_DC_comp_IR_slow;
-				measureOrControl <= 1;
-				PGA_IR <= PGA_Gain;
+				errorDc <= ADC - 8'b01111111 ;
 			end
 			else
 			begin
-				StateOfMachine <= find_DC_comp_RED_fast;
-				measureOrControl <= 0;
-				PGA_Gain <= 0;
-				DC_Comp <= 50; // for model sim we are using 50
-	 			errorDc <= 127;
-	 			measureOrControl <= 0;
-	 			LED_IR <= 0;
-         			LED_RED <= 1; 
-	 			repeatDclowest <= 0;
-	 			PastDC_Comp <= 56;
-	 			signalCounter <= 0;
-	 			minVal <= 250;
-	 			maxVal <= 5;
-	 			optimisePGA <= 0;
-	 			midleVal <= 0;
-	 			optimiseDC <= 0;
-				Flag = 1;
-						
+				errorDc <= 8'b01111111 - ADC;
 			end
+			measureOrControl <= !measureOrControl;
 
 		end
+		else
+		begin			if(ADC > 8'b01111111)
+			begin
+                DC_Comp <= DC_Comp + ((higherDcComp - DC_Comp)>>1);
+                lowDcComp <= DC_Comp;
+				
+			end
+			else
+			begin				
+                DC_Comp <= DC_Comp - ((DC_Comp-lowDcComp)>>1);
+                higherDcComp <= DC_Comp;
+			end
+			PastDC_Comp <= DC_Comp;			
+			measureOrControl <= !measureOrControl;
+		end
+	end
+    find_PGA_comp_RED: 	
+	begin
+		if(signalCounter != 1000 && optimisePGA )
+		begin
+		if(measureOrControl)
+		begin
+			if(minVal <= lowerLimitVal || maxVal >= upperLimitVal)
+			begin
+				PGA_Gain <= past_PGA_Gain - 1;
+				PGA_RED <= past_PGA_Gain - 1;
+				
+				if(minVal <= lowerLimitVal)
+					minVal <= minVal + 1;
+				if(maxVal >= upperLimitVal)
+					maxVal <= maxVal - 1;								
+			end
+			measureOrControl <= !measureOrControl;
+			signalCounter <= signalCounter+1;					
+		end
+		else
+		begin
+			if(minVal > ADC)
+				minVal <= ADC ;
+			if(maxVal < ADC)
+				maxVal <= ADC;
+			
+			//if((PGA_Gain != 7))
+				 //PGA_Gain <= PGA_Gain + 1;
+			past_PGA_Gain <= PGA_Gain;
+			measureOrControl <= !measureOrControl;
+		end
+		end
+		else
+		begin			
+			StateOfMachine <= multiplex_RED_and_IR;
+		end
+    end
+    multiplex_RED_and_IR : 
+    case(stateForRunningLeds)
+        RED_On: begin	
+            if(counterForRunningLeds <=9) begin
+                counterForRunningLeds <= counterForRunningLeds + 1;
+                stateForRunningLeds <= RED_On;
+                RED_ADC_Value <= ADC; 
+                IR_ADC_Value <= 0;	 
+            end
+            else begin 
+                counterForRunningLeds <= 0;
+                stateForRunningLeds <= IR_On;	
+                LED_RED <= 0;	
+                LED_IR <= 1;
+                DC_Comp <= DC_IR;
+                PGA_Gain <= PGA_IR;	  
+            end
+            end		  
+        IR_On: begin
+            if(counterForRunningLeds <=9) begin
+                counterForRunningLeds <= counterForRunningLeds + 1;
+                stateForRunningLeds <= IR_On;
+                IR_ADC_Value <= ADC;
+                RED_ADC_Value <= 0;  
+            end
+            else begin 
+                counterForRunningLeds <= 0;
+                stateForRunningLeds <= RED_On;	
+                LED_RED <= 1;	
+                LED_IR <= 0;
+                DC_Comp <= DC_RED;
+                PGA_Gain <= PGA_RED; 			
+            end
+            end	         
+    endcase
 	endcase
 end	
 end
