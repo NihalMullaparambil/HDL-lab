@@ -1,0 +1,6 @@
+Cannot create OBS on overlap layer for rectilinear
+partition 'toplevel' because there is no overlap layer defined
+in any LEF file. You need to define an overlap layer in the technology
+LEF file after last routing or cut layer similar to the following sample:
+
+
