@@ -1,109 +1,261 @@
-module Controller2 (
- input clk ,
- input Find_Setting ,
- input rst_n ,
- input [7:0] ADC,
- output reg [6:0] DC_Comp,
- output reg LED_IR , LED_RED ,
- output reg [3:0] PGA_Gain
-//,output reg [3:0] LED_Drive
-) ;
+module Controller(
+input[7:0] ADC,
+input clk,
+input rst_n,
+input Find_Setting,
+output reg[6:0] DC_Comp,
+output reg[3:0] PGA_Gain,
+output reg LED_IR,
+output reg LED_RED,
+output reg[7:0] RED_ADC_Value,
+output reg[7:0]	IR_ADC_Value);
 
- reg [6:0] DC_RED, DC_IR; 
- reg [3:0] PGA_RED ,PGA_IR;
+reg measureOrControl,clipLastTime, lastChange, thisChange,DCoptimal;
+reg[1:0] final,flag;
+reg[2:0] state;
+reg[3:0] RED_PGA;
+reg[3:0] IR_PGA;
+reg[6:0] RED_DC, lowDcComp, higherDcComp,oldDC;
+reg[6:0] IR_DC;
+reg[7:0] errorDc, lowestErrorDc;
+reg [9:0] counterForFindingValues ;
+reg[7:0] maxForCurrentPeriod,middleForCurrentPeriod, minForCurrentPeriod, middleValUpperLimit, middleValLowerLimit, maxboard, minboard,diff,diffOld;
+reg[3:0] ctr;
+always@(posedge clk)
+begin
+//$monitor("Find_Setting = %d, state = %d, DC_Comp = %d ,RED_PGA = %d ,IR_PGA = %d ,RED_DC = %d,IR_DC = %d, counterForFindingValues = %d,final = %d,clipLastTime = %d",Find_Setting, state,DC_Comp,RED_PGA,IR_PGA,RED_DC,IR_DC, counterForFindingValues,final,clipLastTime);
+if(!rst_n)
+begin
+	DC_Comp <=64;
+	lowDcComp <= 0;
+        higherDcComp <= 127;
+	state <=0;
+	PGA_Gain<=0;
+	measureOrControl<=0;
+	counterForFindingValues <=0;
+	maxForCurrentPeriod <= 0;
+        minForCurrentPeriod <= 8'b11111111 ;
+	middleForCurrentPeriod <= 0;
+	middleValUpperLimit <= 'h90;
+	middleValLowerLimit <= 'h60;
+	maxboard <= 240;
+	minboard <= 15;
+	final<=0;
+	clipLastTime <=0;
+	LED_IR<=0;
+	LED_RED<=1;
+	flag<= 2;
+	DCoptimal<= 0 ;
+	lastChange<= 0;
+	thisChange<= 0;
+	ctr<=0;
+	RED_ADC_Value<=0;
+	IR_ADC_Value<=0;
 
-//nihal code declaration begins 
-reg [3:0] StateOfMachine;
-reg [3:0] past_PGA_Gain;
-reg [7:0] errorDc, lowestErrorDc, minVal, maxVal, lowerLimitVal, upperLimitVal,midleVal;
-reg [6:0] PastDC_Comp;
-reg measureOrControl, repeatDclowest, optimisePGA, optimiseDC, Flag; // flag is not needed
-reg [9:0] signalCounter;
+end
+else
+begin
 
-//Nihal local param
- localparam [2:0]
- find_DC_comp_IR_fast = 3'b001,
- find_DC_comp_IR_slow = 3'b101,
- find_DC_comp_RED_fast = 3'b010,
- find_DC_comp_Red_slow = 3'b110,
- find_PGA_comp_IR = 3'b011,
- find_PGA_comp_RED = 3'b100,
- multiplex_RED_and_IR = 3'b100;
- 
+	case(state)
+		0:
+		begin
+			if(Find_Setting)
+			begin
+			state<= 1;
+			end
+			DC_Comp <=64;
+			lowDcComp <= 0;
+       			 higherDcComp <= 127;
+			RED_ADC_Value<=0;
+			IR_ADC_Value<=0;
+			PGA_Gain<=0;
+			measureOrControl<=0;
+			counterForFindingValues <=0;
+			maxForCurrentPeriod <= 0;
+       		 	minForCurrentPeriod <= 8'b11111111 ;
+			middleForCurrentPeriod <= 0;
+			middleValUpperLimit <= 'h90;
+			middleValLowerLimit <= 'h60;
+			maxboard <= 240;
+			minboard <= 15;
+			final<=0;
+			clipLastTime <=0;
+			LED_IR<=0;
+			LED_RED<=1;
+			flag<= 2;
+			DCoptimal<= 0 ;
+			lastChange<= 0;
+			thisChange<= 0;
+		end
+		1: //fast DC RED
+		if(measureOrControl)
+		begin	//measure
+			if(ADC>middleValLowerLimit && ADC<middleValUpperLimit) // adjust to get better value
+			begin
+				state <= 2;
+				PGA_Gain <= 7;
+							
+			end
+						
+			
+			measureOrControl <= !measureOrControl;
 
-always@( posedge clk or negedge rst_n ) begin
-
- if (!rst_n) 
- begin
-	 // Nihal reset signals starts
-	 StateOfMachine <= find_DC_comp_IR_fast;
-	 DC_Comp <= 64;
-	 DC_IR <= 0;
-	 errorDc <= 127;
-	 measureOrControl = 0;
-	 PGA_Gain <= 0;
-	 LED_IR <= 1;
-     LED_RED <= 0; 
-	 lowestErrorDc <= 126;
-	 repeatDclowest <= 0;
-	 PastDC_Comp <= 56;
-	 signalCounter <= 0;
-	 minVal <= 250;
-	 maxVal <= 5;
-	 lowerLimitVal <= 0;
-	 upperLimitVal <= 255;
-	 optimisePGA <= 0;
-	 midleVal <= 0;
-	 optimiseDC <= 0;
-	 Flag <=0;
-     lowDcComp <= 0;
-     higherDcComp <= 127;
- end
- else 
- begin
-	case(StateOfMachine)
-	default : begin
-		//restart from begning:
-		//StateOfMachine <= find_DC_comp_IR;
-		DC_Comp <= DC_IR;
-		errorDc <= 3;
-		measureOrControl <= 0;
-		PGA_Gain <= PGA_IR;
-	 	LED_IR <= 1;
-        LED_RED <= 0;
-		PastDC_Comp <= 56;
-		signalCounter <= 0;
-		midleVal <= 0;
+		end
+		else
+		begin
+			if(ADC > 8'b01111111)
+			
+			begin
+                		DC_Comp <= DC_Comp + ((higherDcComp - DC_Comp)>>1);
+                		lowDcComp <= DC_Comp;
+				
+			end
+			else
+			begin				
+                		DC_Comp <= DC_Comp - ((DC_Comp-lowDcComp)>>1);
+                		higherDcComp <= DC_Comp;
+			end		
+			measureOrControl <= !measureOrControl;
+		end
+		2 : // pga + dc_comp optimition
+			begin
+		if(final==3)begin
+		state<=3;/// state change
+		RED_PGA<=PGA_Gain;
+		RED_DC<=DC_Comp;
+		DC_Comp <=64;
+	 	lowDcComp <= 0;
+         	higherDcComp <= 127;
+		PGA_Gain<=0;
+		measureOrControl<=0;
+		counterForFindingValues <=0;
+		maxForCurrentPeriod <= 0;
+        	minForCurrentPeriod <= 8'b11111111 ;
+		middleForCurrentPeriod <= 0;
+		middleValUpperLimit <= 'h90;
+		middleValLowerLimit <= 'h27;
+		final<=0;
+		clipLastTime <=0;
+		LED_IR<=1;
+		LED_RED<=0;
+		flag<= 2;
+		DCoptimal<= 0 ;
+		lastChange<= 0;
+		thisChange<= 0;
+				
+		end
+		else
+		begin
+		case ( counterForFindingValues )
+                default: begin
+			   if(ADC > maxboard || ADC < minboard)
+			   begin
+				counterForFindingValues <=0;
+				maxForCurrentPeriod <= 0;
+                		minForCurrentPeriod <= 8'b11111111;	
+				PGA_Gain<= PGA_Gain - 1;
+				clipLastTime <= 1;
+				final[0]<=0;			
+			   end
+			   else
+			   begin
+				 maxForCurrentPeriod <= (maxForCurrentPeriod > ADC) ? maxForCurrentPeriod : ADC;
+                           	minForCurrentPeriod <= (minForCurrentPeriod < ADC) ? minForCurrentPeriod : ADC;
+                           	counterForFindingValues <= counterForFindingValues + 1;
+				
+			   end
+                         end
+                1000:    begin 
+                           middleForCurrentPeriod <= (maxForCurrentPeriod>>1) + (minForCurrentPeriod>>1);
+			   counterForFindingValues <= counterForFindingValues + 1;
 		
-	end
-	find_DC_comp_IR_fast: 
-	begin
-		if(measureOrControl)
-		begin	//measure		
-			if(errorDc < lowestErrorDc || errorDc == lowestErrorDc)
-				if(repeatDclowest && errorDc == lowestErrorDc)
+                         end  
+		1001: 
+			begin
+				counterForFindingValues <=0;
+				maxForCurrentPeriod <= 0;
+                		minForCurrentPeriod <= 8'b11111111;
+			//exit if optimal solution
+			//old error
+			if(lastChange^thisChange && flag == 0)
+			begin
+				if(diffOld<diff)
+					begin
+				//	DC_Comp<=oldDC;
+					end
+				else
 				begin
-                    StateOfMachine <= find_PGA_comp_IR;
-					DC_IR <= PastDC_Comp;
-					DC_Comp <= PastDC_Comp;
-					repeatDclowest <= 0;
-					signalCounter <= 0;
-					PGA_Gain <= 7;
-					optimisePGA <= 1;
+					DC_Comp<=oldDC;
+				end
+				DCoptimal<=1;
+				final[1]<=1;
+			end
+				
+			if(!DCoptimal)
+			begin
+				if(middleForCurrentPeriod  > middleValUpperLimit  )  
+				begin
+					DC_Comp <= DC_Comp + 1;
+					final[1]<=0;
+					lastChange<=thisChange;
+					thisChange<=1;
+					diff<=middleForCurrentPeriod-'h7f;
+					diffOld<=diff;
+					oldDC<=DC_Comp;
+					if(flag>0)
+					flag<=flag-1;
+				end
+				else if(middleForCurrentPeriod < middleValLowerLimit)
+				begin
+					DC_Comp <= DC_Comp - 1;
+					final[1]<=0;
+					lastChange<=thisChange;
+					thisChange<=0;
+					diff<='h7f-middleForCurrentPeriod;
+					diffOld<=diff;
+					oldDC<=DC_Comp;
+					if(flag>0)
+					flag<=flag-1;
+				end
+				else
+					final[1]<=1;
+			end
+				if(maxForCurrentPeriod > maxboard || minForCurrentPeriod < minboard)
+				begin
+					PGA_Gain<= PGA_Gain - 1;
+					clipLastTime <= 1;
+					final[0]<=0;
 				end
 				else
 				begin
-					lowestErrorDc <= errorDc;
-					repeatDclowest <= 1;
+					if(clipLastTime)
+						//leave
+						final[0]<=1;
+												
+					else
+					begin
+					PGA_Gain<= PGA_Gain + 1;
+					clipLastTime<=0;
+					final[0]<=0;
+					end
 				end
-			if(ADC > 8'b01111111)
+
+			end 
+		endcase
+		end//else condition - not final
+		end//ending of state 1
+		3 :// fast IR DC
+		begin
+		if(measureOrControl)
+		begin	//measure
+			if(ADC>8'h7d && ADC<8'h83) // adjust to get better value
 			begin
-				errorDc <= ADC - 8'b01111111 ;
+				state <= 4;
+				PGA_Gain <= 7;
+							
 			end
-			else
-			begin
-				errorDc <= 8'b01111111 - ADC;
-			end
+						
+			
 			measureOrControl <= !measureOrControl;
 
 		end
@@ -111,197 +263,246 @@ always@( posedge clk or negedge rst_n ) begin
 		begin
 			if(ADC > 8'b01111111)
 			begin
-                DC_Comp <= DC_Comp + ((higherDcComp - DC_Comp)>>1);
-                lowDcComp <= DC_Comp;
+                		DC_Comp <= DC_Comp + ((higherDcComp - DC_Comp)>>1);
+                		lowDcComp <= DC_Comp;
 				
 			end
 			else
 			begin				
-                DC_Comp <= DC_Comp - ((DC_Comp-lowDcComp)>>1);
-                higherDcComp <= DC_Comp;
-			end
-			PastDC_Comp <= DC_Comp;			
+                		DC_Comp <= DC_Comp - ((DC_Comp-lowDcComp)>>1);
+                		higherDcComp <= DC_Comp;
+			end		
 			measureOrControl <= !measureOrControl;
 		end
-	end
-    
-	find_PGA_comp_IR: 	
-	begin
-		if(signalCounter != 1000 && optimisePGA )
-		begin
-		if(measureOrControl)
-		begin
-			if(minVal <= lowerLimitVal || maxVal >= upperLimitVal)
+					
+		end // ending of case 2
+	    4 : 
+		
 			begin
-				PGA_Gain <= past_PGA_Gain - 1;
-				PGA_IR <= past_PGA_Gain - 1;
+		if(final==3)begin
+		state<=5;/// state change
+		IR_PGA <=PGA_Gain;
+		IR_DC <= DC_Comp;	 
+		LED_IR<=0;
+		LED_RED<=0;
 				
-				if(minVal <= lowerLimitVal)
-					minVal <= minVal + 1;
-				if(maxVal >= upperLimitVal)
-					maxVal <= maxVal - 1;								
-			end
-			measureOrControl <= !measureOrControl;
-			signalCounter <= signalCounter+1;					
 		end
 		else
 		begin
-			if(minVal > ADC)
-				minVal <= ADC ;
-			if(maxVal < ADC)
-				maxVal <= ADC;
-			
-			//if((PGA_Gain != 7))
-				 //PGA_Gain <= PGA_Gain + 1;
-			past_PGA_Gain <= PGA_Gain;
-			measureOrControl <= !measureOrControl;
-		end
-		end
-		else
-		begin			
-			optimisePGA <= 0;
-			signalCounter <= 0;
-			StateOfMachine <= find_DC_comp_RED_fast;
-            measureOrControl <= 0;
-            PGA_Gain <= 0;
-            DC_Comp <= 64; // for model sim we are using 50
-            errorDc <= 127;
-            measureOrControl <= 0;
-            LED_IR <= 0;
-            LED_RED <= 1; 
-            repeatDclowest <= 0;
-            PastDC_Comp <= 56;
-            signalCounter <= 0;
-            minVal <= 250;
-            maxVal <= 5;
-            optimisePGA <= 0;
-            midleVal <= 0;
-            optimiseDC <= 0;
-            lowestErrorDc <= 126;
-            lowDcComp <= 0;
-            higherDcComp <= 127;	
-		end
-    end
-    find_DC_comp_RED_fast :
-	begin
-		if(measureOrControl)
-		begin	//measure		
-			if(errorDc < lowestErrorDc || errorDc == lowestErrorDc)
-				if(repeatDclowest && errorDc == lowestErrorDc)
+		case ( counterForFindingValues )
+                default: begin
+			   if(ADC > maxboard || ADC < minboard)
+			   begin
+				counterForFindingValues <=0;
+				maxForCurrentPeriod <= 0;
+                		minForCurrentPeriod <= 8'b11111111;	
+				PGA_Gain<= PGA_Gain - 1;
+				clipLastTime <= 1;
+				final[0]<=0;			
+			   end
+			   else
+			   begin
+				 maxForCurrentPeriod <= (maxForCurrentPeriod > ADC) ? maxForCurrentPeriod : ADC;
+                           	minForCurrentPeriod <= (minForCurrentPeriod < ADC) ? minForCurrentPeriod : ADC;
+                           	counterForFindingValues <= counterForFindingValues + 1;
+				
+			   end
+                         end
+                1000:    begin 
+                           middleForCurrentPeriod <= (maxForCurrentPeriod>>1) + (minForCurrentPeriod>>1);
+			   counterForFindingValues <= counterForFindingValues + 1;
+		
+                         end  
+		1001: 
+			begin
+				counterForFindingValues <=0;
+				maxForCurrentPeriod <= 0;
+                          	minForCurrentPeriod <= 8'b11111111;
+		if(lastChange^thisChange && flag == 0)
+			begin
+				if(diffOld<diff)
+					begin
+				//	DC_Comp<=oldDC;
+					end
+				else
 				begin
-					StateOfMachine <= find_PGA_comp_RED;
-					DC_RED <= PastDC_Comp;
-					DC_Comp <= PastDC_Comp;
-					repeatDclowest <= 0;
-					signalCounter <= 0;
-					PGA_Gain <= 7;
-					optimisePGA <= 1;
+					DC_Comp<=oldDC;
+				end
+				DCoptimal<=1;
+				final[1]<=1;
+			end
+				
+			if(!DCoptimal)
+			begin
+				if(middleForCurrentPeriod  > middleValUpperLimit  )  
+				begin
+					DC_Comp <= DC_Comp + 1;
+					final[1]<=0;
+					lastChange<=thisChange;
+					thisChange<=1;
+					diff<=middleForCurrentPeriod-'h7f;
+					diffOld<=diff;
+					oldDC<=DC_Comp;
+					if(flag>0)
+					flag<=flag-1;
+				end
+				else if(middleForCurrentPeriod < middleValLowerLimit)
+				begin
+					DC_Comp <= DC_Comp - 1;
+					final[1]<=0;
+					lastChange<=thisChange;
+					thisChange<=0;
+					diff<='h7f-middleForCurrentPeriod;
+					diffOld<=diff;
+					oldDC<=DC_Comp;
+					if(flag>0)
+					flag<=flag-1;
+				end
+				else
+					final[1]<=1;
+			end
+				if(maxForCurrentPeriod > maxboard || minForCurrentPeriod < minboard)
+				begin
+					PGA_Gain<= PGA_Gain - 1;
+					clipLastTime <= 1;
+					final[0]<=0;
 				end
 				else
 				begin
-					lowestErrorDc <= errorDc;
-					repeatDclowest <= 1;
+					if(clipLastTime)
+						//leave
+						final[0]<=1;
+												
+					else
+					begin
+					PGA_Gain<= PGA_Gain + 1;
+					clipLastTime<=0;
+					final[0]<=0;
+					end
 				end
-			if(ADC > 8'b01111111)
-			begin
-				errorDc <= ADC - 8'b01111111 ;
-			end
-			else
-			begin
-				errorDc <= 8'b01111111 - ADC;
-			end
-			measureOrControl <= !measureOrControl;
 
-		end
-		else
-		begin			if(ADC > 8'b01111111)
+			end 
+		endcase
+		end//else condition - not final	
+		end // ending of case 3
+		5 : //RED is ON
+		begin
+			if(Find_Setting)
 			begin
-                DC_Comp <= DC_Comp + ((higherDcComp - DC_Comp)>>1);
-                lowDcComp <= DC_Comp;
-				
+			state<=1;
+				DC_Comp <=64;
+			lowDcComp <= 0;
+       		 higherDcComp <= 127;
+			state <=0;
+			PGA_Gain<=0;
+			measureOrControl<=0;
+			counterForFindingValues <=0;
+			maxForCurrentPeriod <= 0;
+       		 minForCurrentPeriod <= 8'b11111111 ;
+			middleForCurrentPeriod <= 0;
+			middleValUpperLimit <= 'h90;
+			middleValLowerLimit <= 'h60;
+			maxboard <= 240;
+			minboard <= 15;
+			final<=0;
+			clipLastTime <=0;
+			LED_IR<=0;
+			LED_RED<=1;
+			flag<= 2;
+			DCoptimal<= 0 ;
+			lastChange<= 0;
+			thisChange<= 0;
 			end
 			else
-			begin				
-                DC_Comp <= DC_Comp - ((DC_Comp-lowDcComp)>>1);
-                higherDcComp <= DC_Comp;
-			end
-			PastDC_Comp <= DC_Comp;			
-			measureOrControl <= !measureOrControl;
-		end
-	end
-    find_PGA_comp_RED: 	
-	begin
-		if(signalCounter != 1000 && optimisePGA )
-		begin
-		if(measureOrControl)
-		begin
-			if(minVal <= lowerLimitVal || maxVal >= upperLimitVal)
 			begin
-				PGA_Gain <= past_PGA_Gain - 1;
-				PGA_RED <= past_PGA_Gain - 1;
-				
-				if(minVal <= lowerLimitVal)
-					minVal <= minVal + 1;
-				if(maxVal >= upperLimitVal)
-					maxVal <= maxVal - 1;								
+			LED_RED<=1;
+			LED_IR<=0;
+			DC_Comp<=RED_DC;
+			PGA_Gain<=RED_PGA;
+			RED_ADC_Value<=ADC;
+			IR_ADC_Value<=0;
+		
+			if(ctr==9)
+			begin
+			state<=6;
+			ctr<=0;
 			end
-			measureOrControl <= !measureOrControl;
-			signalCounter <= signalCounter+1;					
+			else
+				ctr<=ctr+1;
 		end
-		else
+		end
+		6 : //RED is ON
 		begin
-			if(minVal > ADC)
-				minVal <= ADC ;
-			if(maxVal < ADC)
-				maxVal <= ADC;
-			
-			//if((PGA_Gain != 7))
-				 //PGA_Gain <= PGA_Gain + 1;
-			past_PGA_Gain <= PGA_Gain;
-			measureOrControl <= !measureOrControl;
+			if(Find_Setting)
+			begin
+			state<=1;
+				DC_Comp <=64;
+			lowDcComp <= 0;
+       		 higherDcComp <= 127;
+			state <=0;
+			PGA_Gain<=0;
+			measureOrControl<=0;
+			counterForFindingValues <=0;
+			maxForCurrentPeriod <= 0;
+       		 minForCurrentPeriod <= 8'b11111111 ;
+			middleForCurrentPeriod <= 0;
+			middleValUpperLimit <= 'h90;
+			middleValLowerLimit <= 'h60;
+			maxboard <= 240;
+			minboard <= 15;
+			final<=0;
+			clipLastTime <=0;
+			LED_IR<=0;
+			LED_RED<=1;
+			flag<= 2;
+			DCoptimal<= 0 ;
+			lastChange<= 0;
+			thisChange<= 0;
+			end
+			else
+			begin
+			LED_RED<=0;
+			LED_IR<=1;
+			DC_Comp<=IR_DC;
+			PGA_Gain<=IR_PGA;
+			RED_ADC_Value<=0;
+			IR_ADC_Value<=ADC;
+			if(ctr==9)
+			begin
+			state<=5;
+			ctr<=0;
+			end
+			else
+			ctr<=ctr+1;
 		end
 		end
-		else
-		begin			
-			StateOfMachine <= multiplex_RED_and_IR;
-		end
-    end
-    multiplex_RED_and_IR : 
-    case(stateForRunningLeds)
-        RED_On: begin	
-            if(counterForRunningLeds <=9) begin
-                counterForRunningLeds <= counterForRunningLeds + 1;
-                stateForRunningLeds <= RED_On;
-                RED_ADC_Value <= ADC; 
-                IR_ADC_Value <= 0;	 
-            end
-            else begin 
-                counterForRunningLeds <= 0;
-                stateForRunningLeds <= IR_On;	
-                LED_RED <= 0;	
-                LED_IR <= 1;
-                DC_Comp <= DC_IR;
-                PGA_Gain <= PGA_IR;	  
-            end
-            end		  
-        IR_On: begin
-            if(counterForRunningLeds <=9) begin
-                counterForRunningLeds <= counterForRunningLeds + 1;
-                stateForRunningLeds <= IR_On;
-                IR_ADC_Value <= ADC;
-                RED_ADC_Value <= 0;  
-            end
-            else begin 
-                counterForRunningLeds <= 0;
-                stateForRunningLeds <= RED_On;	
-                LED_RED <= 1;	
-                LED_IR <= 0;
-                DC_Comp <= DC_RED;
-                PGA_Gain <= PGA_RED; 			
-            end
-            end	         
-    endcase
+	default:
+	begin
+		DC_Comp <=64;
+			lowDcComp <= 0;
+       		 higherDcComp <= 127;
+			state <=0;
+			PGA_Gain<=0;
+			measureOrControl<=0;
+			counterForFindingValues <=0;
+			maxForCurrentPeriod <= 0;
+       		 minForCurrentPeriod <= 8'b11111111 ;
+			middleForCurrentPeriod <= 0;
+			middleValUpperLimit <= 'h90;
+			middleValLowerLimit <= 'h60;
+			maxboard <= 240;
+			minboard <= 15;
+			final<=0;
+			clipLastTime <=0;
+			LED_IR<=0;
+			LED_RED<=1;
+			flag<= 2;
+			DCoptimal<= 0 ;
+			lastChange<= 0;
+			thisChange<= 0;
+	state<=0;
+	end
 	endcase
-end	
+end
 end
 endmodule
