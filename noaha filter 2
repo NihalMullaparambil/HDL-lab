@@ -1,0 +1,151 @@
+module filter(in, out, clk, rst_n);
+  //693( decimal) * 510 ( decimal)creates the max value of output: 353430 (decimal)
+  input rst_n;
+  input[7:0] in;
+  output reg[19:0] out;
+  reg[9:0] t1; //necessary: 10 bits
+  reg[12:0] t2; //necessary: 13 bits
+  reg[12:0] t3; //necessary: 13 bits
+  reg[13:0] t4; //necessary: 14 bits
+  reg[14:0] t5; //necessary: 15 bits
+  reg[14:0] t6; //necessary: 15 bits
+  reg[15:0] t7; //necessary: 16 bits
+  reg[15:0] t8; //necessary: 16 bits
+  reg[15:0] t9; //necessary: 16 bits
+  reg[15:0] t10; //necessary: 16 bits
+  reg[15:0] t11; //necessary: 16 bits
+  reg[7:0] b0;
+  reg[7:0] b1;
+  reg[7:0] b2;
+  reg[7:0] b3;
+  reg[7:0] b4;
+  reg[7:0] b5;
+  reg[7:0] b6;
+  reg[7:0] b7;
+  reg[7:0] b8;
+  reg[7:0] b9;
+  reg[7:0] b10;
+  reg[7:0] b11;
+  reg[7:0] b12;
+  reg[7:0] b13;
+  reg[7:0] b14;
+  reg[7:0] b15;
+  reg[7:0] b16;
+  reg[7:0] b17;
+  reg[7:0] b18;
+  reg[7:0] b19;
+  reg[7:0] b20;
+  reg[7:0] b21;
+  input clk;
+  reg[1:0] state;
+  always @ (posedge clk)
+    begin
+    if(!rst_n)
+     begin
+     t1<=0;
+     t2<=0;
+     t3<=0;
+     t4<=0;
+     t5<=0;
+     t6<=0;
+     t7<=0;
+     t8<=0;
+     t9<=0;
+     t10<=0;
+     t11<=0;
+     b0<=0;
+     b1<=0;
+     b2<=0;
+     b3<=0;
+     b4<=0;
+     b5<=0;
+     b6<=0;
+     b7<=0;
+     b8<=0;
+     b9<=0;
+     b10<=0;
+     b11<=0;  
+     b12<=0;
+     b13<=0;
+     b14<=0;
+     b15<=0;
+     b16<=0;
+     b17<=0;
+     b18<=0;
+     b19<=0;
+     b20<=0;
+     b21<=0;
+     out<=0;
+     state<=0;
+     end
+  else
+    begin
+    case (state)
+        0:begin 
+		if (in!=0)
+         begin
+        b21<=b20;
+        b20<=b19;
+        b19<=b18;
+        b18<=b17;
+        b17<=b16;
+        b16<=b15;
+        b15<=b14;
+        b14<=b13;
+        b13<=b12;
+        b12<=b11;
+        b11<=b10;
+        b10<=b9;  
+        b9<=b8;
+        b8<=b7;
+        b7<=b6;
+        b6<=b5;
+        b5<=b4;
+        b4<=b3;
+        b3<=b2;
+        b2<=b1;
+        b1<=b0; 
+        b0<=in;
+        state<=1;
+      end  
+	end
+      1:
+	begin
+	t1<=b0+b21;
+	t2<=b1+b20;
+	t3<=b2+b19;
+	t4<=b3+b18;
+	t5<=b4+b17;
+	t6<=b5+b16;
+	t7<=b6+b15;
+	t8<=b7+b14;
+	t9<=b8+b13;
+	t10<=b9+b12;
+	t11<=b10+b11;
+	state<=2;
+	end
+	2:
+          	begin 
+              t1<=t1*2;
+              t2<=t2*10;         
+              t3<=t3*16;              
+              t4<=t4*28;
+              t5<=t5*43;
+              t6<=t6*60;
+		  t7<=t7*78;        
+              t8<=t8*95;    
+              t9<=t9*111;
+              t10<=t10*122;
+              t11<=t11*128;
+              state<=3;  
+            end
+	3:
+		begin
+		out<=t1+t2+t3+t4+t5+t6+t7+t8+t9+t10+t11;
+		state<=0;
+		end
+    endcase
+    end
+  end
+    
+endmodule
